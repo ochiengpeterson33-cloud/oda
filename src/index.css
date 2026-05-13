@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+
+  /* Rich Earth-tone color palette */
+  --color-earth-olive: #4A5D23;
+  --color-earth-olive-dark: #344218;
+  --color-earth-sand: #C9AD8A;
+  --color-earth-sand-light: #EBE1D3;
+  --color-earth-terracotta: #A84931;
+  --color-earth-terracotta-dark: #823623;
+  --color-earth-beige: #F4F1ED;
+  --color-earth-brown: #2D241C;
+  --color-earth-gray: #7A726A;
+  --color-earth-gray-light: #E8E5E1;
+  --color-earth-gray-dark: #4A4641;
+
+  /* Semantic mapping */
+  --color-background: var(--color-earth-beige);
+  --color-foreground: var(--color-earth-brown);
+  --color-primary: var(--color-earth-olive);
+  --color-primary-dark: var(--color-earth-olive-dark);
+  --color-secondary: var(--color-earth-sand);
+  --color-accent: var(--color-earth-terracotta);
+  --color-surface: #FAF8F5;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    @apply antialiased font-sans selection:bg-earth-sand selection:text-earth-brown;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif text-earth-brown;
+  }
+}
