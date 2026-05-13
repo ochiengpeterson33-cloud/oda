@@ -25,31 +25,52 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
+    try {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) fetchProfile(session.user.id);
+        else setLoading(false);
+      }).catch(error => {
+        console.error("Supabase getSession promise error:", error);
         setLoading(false);
-      }
-    });
+      });
+    } catch (err) {
+      console.error("Supabase getSession sync error:", err);
+      setLoading(false);
+    }
 
-    return () => subscription.unsubscribe();
+    try {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          fetchProfile(session.user.id);
+        } else {
+          setProfile(null);
+          setLoading(false);
+        }
+      });
+      return () => subscription?.unsubscribe();
+    } catch (err) {
+      console.error("Supabase onAuthStateChange error:", err);
+      return () => {};
+    }
   }, []);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) setProfile(data);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      if (error) {
+        console.error("Supabase fetchProfile error:", error);
+      } else if (data) {
+        setProfile(data);
+      }
+    } catch (error) {
+      console.error("Supabase fetchProfile network error:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signOut = async () => {

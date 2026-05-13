@@ -117,7 +117,7 @@ export const MarketplacePage = () => {
   );
 };
 
-const ProductCard = ({ product }: { product: any }) => {
+const ProductCard: React.FC<{ product: any }> = ({ product }) => {
   return (
     <motion.div 
       whileHover={{ y: -4 }}
