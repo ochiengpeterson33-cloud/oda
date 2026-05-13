@@ -1,43 +1,34 @@
 import { createClient } from "@supabase/supabase-js";
 
-let envUrl = (import.meta.env.VITE_SUPABASE_URL || "").trim();
-const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-// Automatically append https:// if the user forgot it
-if (envUrl && !envUrl.startsWith('http')) {
-  envUrl = `https://${envUrl}`;
-}
-
-const isValidUrl = (url: string) => {
+const getValidUrl = (url: string) => {
+  if (!url) return "https://placeholder-project.supabase.co";
+  let formattedUrl = url.trim();
+  if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+    formattedUrl = `https://${formattedUrl}`;
+  }
   try {
-    new URL(url);
-    return true;
+    new URL(formattedUrl);
+    return formattedUrl;
   } catch {
-    return false;
+    return "https://placeholder-project.supabase.co";
   }
 };
 
-const supabaseUrl = isValidUrl(envUrl) ? envUrl : "https://placeholder-project.supabase.co";
-const supabaseAnonKey = envKey || "placeholder-anon-key";
-
-console.log("Supabase URL configured:", !!envUrl, "Valid URL:", isValidUrl(envUrl));
+const finalUrl = getValidUrl(supabaseUrl);
+const finalKey = supabaseAnonKey.trim() || "placeholder-anon-key";
 
 // Use a singleton instance of the Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(finalUrl, finalKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-  },
-  global: {
-    fetch: (url, init) => {
-      return fetch(url, init).catch(err => {
-        console.error("Supabase global fetch error:", err, "URL:", url);
-        throw err;
-      });
-    }
   }
 });
 
 export const isSupabaseConfigured = () => {
-    return supabaseUrl !== "https://placeholder-project.supabase.co" && supabaseAnonKey !== "placeholder-anon-key";
+    // If the provided url is valid and the key is set, it's considered configured
+    return finalUrl !== "https://placeholder-project.supabase.co" && finalKey !== "placeholder-anon-key" && finalKey.length > 0;
 };

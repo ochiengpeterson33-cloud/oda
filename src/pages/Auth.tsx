@@ -21,7 +21,7 @@ export const AuthUI = ({ isLogin = false }: { isLogin?: boolean }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const { session } = useAuth();
+  const { session, error: contextError } = useAuth();
   const navigate = useNavigate();
 
   // Redirect if already logged in
@@ -39,7 +39,7 @@ export const AuthUI = ({ isLogin = false }: { isLogin?: boolean }) => {
     setError(null);
 
     if (!isSupabaseConfigured()) {
-      setError("Supabase is not configured. This is a local preview. In a real app, you would log in here.");
+      setError("Please configure Supabase to continue.");
       setLoading(false);
       return;
     }
@@ -64,11 +64,16 @@ export const AuthUI = ({ isLogin = false }: { isLogin?: boolean }) => {
         if (error) throw error;
         // The trigger will handle adding to profile table, but just in case:
         if (data.user) {
-            setError("Check your email to confirm sign up. (Note: in demo mode, you might need to auto-confirm in Supabase dashboard).")
+            setError("Success! Please check your email to verify your account.");
         }
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred during authentication.');
+      console.error("Auth Exception:", err);
+      if (err.message && err.message.includes('Failed to fetch')) {
+         setError("Network error: Could not connect to Supabase. This could be due to adblockers (like Brave Shields), invalid Supabase URL, or network issues.");
+      } else {
+         setError(err.message || 'An error occurred during authentication.');
+      }
     } finally {
       setLoading(false);
     }
@@ -124,8 +129,14 @@ export const AuthUI = ({ isLogin = false }: { isLogin?: boolean }) => {
           </div>
         )}
 
-        {error && (
+        {contextError && (
           <div className="mb-6 bg-earth-terracotta/10 border border-earth-terracotta/20 text-earth-terracotta text-sm rounded-xl p-4">
+            {contextError.includes('Failed to fetch') ? "Network error: Could not connect to Supabase. This could be due to adblockers (like Brave Shields), invalid Supabase URL, or network issues." : contextError}
+          </div>
+        )}
+
+        {error && (
+          <div className={`mb-6 text-sm rounded-xl p-4 border ${error.startsWith('Success!') ? 'bg-green-50/50 border-green-200 text-green-700' : 'bg-earth-terracotta/10 border-earth-terracotta/20 text-earth-terracotta'}`}>
             {error}
           </div>
         )}

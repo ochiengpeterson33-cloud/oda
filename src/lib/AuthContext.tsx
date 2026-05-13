@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { supabase, isSupabaseConfigured } from './supabase';
 
 interface AuthContextType {
   session: Session | null;
@@ -8,6 +8,7 @@ interface AuthContextType {
   profile: any | null; // Typed loosely for MVP
   signOut: () => Promise<void>;
   loading: boolean;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,6 +17,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   signOut: async () => {},
   loading: true,
+  error: null,
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -23,62 +25,99 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) fetchProfile(session.user.id);
-        else setLoading(false);
-      }).catch(error => {
-        console.error("Supabase getSession promise error:", error);
-        setLoading(false);
-      });
-    } catch (err) {
-      console.error("Supabase getSession sync error:", err);
-      setLoading(false);
-    }
+    let mounted = true;
+    let subscription: any = null;
 
-    try {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+    const initAuth = async () => {
+      if (!isSupabaseConfigured()) {
+        if (mounted) setLoading(false);
+        return;
+      }
+
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) throw sessionError;
+
+        if (mounted) {
+          setSession(session);
+          setUser(session?.user ?? null);
+        }
+
         if (session?.user) {
-          fetchProfile(session.user.id);
+          await fetchProfile(session.user.id);
         } else {
-          setProfile(null);
+          if (mounted) setLoading(false);
+        }
+      } catch (err: any) {
+        console.error("Supabase getSession error:", err);
+        if (mounted) {
+          setError(err.message || "Failed to connect to authentication service.");
           setLoading(false);
         }
-      });
-      return () => subscription?.unsubscribe();
-    } catch (err) {
-      console.error("Supabase onAuthStateChange error:", err);
-      return () => {};
-    }
+      }
+
+      try {
+        const { data } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+          if (mounted) {
+            setSession(currentSession);
+            setUser(currentSession?.user ?? null);
+          }
+          if (currentSession?.user) {
+            fetchProfile(currentSession.user.id);
+          } else {
+            if (mounted) {
+              setProfile(null);
+              setLoading(false);
+            }
+          }
+        });
+        subscription = data.subscription;
+      } catch (err) {
+        console.error("Supabase onAuthStateChange error:", err);
+      }
+    };
+
+    initAuth();
+
+    return () => {
+      mounted = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const fetchProfile = async (userId: string) => {
+    if (!isSupabaseConfigured()) return;
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
       if (error) {
-        console.error("Supabase fetchProfile error:", error);
+        console.warn("Supabase fetchProfile error (this is common if profiles table is missing or RLS is blocking):", error);
       } else if (data) {
         setProfile(data);
       }
-    } catch (error) {
-      console.error("Supabase fetchProfile network error:", error);
+    } catch (err: any) {
+      console.error("Supabase fetchProfile network error:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Error signing out:", err);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, signOut, loading }}>
+    <AuthContext.Provider value={{ session, user, profile, signOut, loading, error }}>
       {children}
     </AuthContext.Provider>
   );
