@@ -1,19 +1,84 @@
-import React, { useState } from 'react';
-import { MOCK_PRODUCTS, MOCK_CATEGORIES } from '../lib/mockData';
-import { Search, Filter, SlidersHorizontal, Package, Building2, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { Search, Filter, SlidersHorizontal, Package, Building2, ExternalLink, Loader2 } from 'lucide-react';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 
+const DEFAULT_CATEGORIES = [
+  { id: '1', name: 'Raw Materials' },
+  { id: '2', name: 'Machinery & Equipment' },
+  { id: '3', name: 'Packaging Solutions' },
+  { id: '4', name: 'Electronics Components' },
+  { id: '5', name: 'Textiles & Apparel' },
+];
+
 export const MarketplacePage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredProducts = MOCK_PRODUCTS.filter((product) => {
-    const matchesSearch = product.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          product.company_name.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      setError("System setup incomplete: Missing Supabase configuration.");
+      return;
+    }
+
+    const fetchProducts = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          if (error.code === '42P01') { // relation does not exist
+             setError("Initial Setup Required: The 'products' table does not exist in your Supabase database yet. Please create it first to start adding products.");
+          } else {
+             setError(error.message);
+          }
+           throw error;
+        }
+        
+        setProducts(data || []);
+      } catch (err: any) {
+        console.error("Error fetching products:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+
+    // Set up realtime subscription
+    const subscription = supabase
+      .channel('public:products')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          setProducts(prev => [payload.new, ...prev]);
+        } else if (payload.eventType === 'UPDATE') {
+           setProducts(prev => prev.map(p => p.id === payload.new.id ? payload.new : p));
+        } else if (payload.eventType === 'DELETE') {
+           setProducts(prev => prev.filter(p => p.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, []);
+
+  const filteredProducts = products.filter((product) => {
+    const titleMatch = product.title?.toLowerCase().includes(searchTerm.toLowerCase());
+    const companyMatch = product.company_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = titleMatch || companyMatch;
     const matchesCategory = selectedCategory ? product.category === selectedCategory : true;
     return matchesSearch && matchesCategory;
   });
@@ -61,7 +126,7 @@ export const MarketplacePage = () => {
                         >
                           All Categories
                         </button>
-                      {MOCK_CATEGORIES.map(cat => (
+                      {DEFAULT_CATEGORIES.map(cat => (
                         <button 
                           key={cat.id} 
                           onClick={() => setSelectedCategory(cat.name)}
@@ -72,7 +137,6 @@ export const MarketplacePage = () => {
                       ))}
                     </div>
                   </div>
-                  {/* Additional filters could go here */}
                 </div>
               </motion.div>
             )}
@@ -96,7 +160,15 @@ export const MarketplacePage = () => {
           </div>
         </div>
 
-        {filteredProducts.length > 0 ? (
+        {error ? (
+          <div className="bg-earth-terracotta/10 border border-earth-terracotta/20 text-earth-terracotta text-sm rounded-xl p-4 mb-6">
+            {error}
+          </div>
+        ) : loading ? (
+          <div className="flex justify-center items-center py-20">
+             <Loader2 size={32} className="animate-spin text-earth-olive" />
+          </div>
+        ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product) => (
               <ProductCard key={product.id} product={product} />

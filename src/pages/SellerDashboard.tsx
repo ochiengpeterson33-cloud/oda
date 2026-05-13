@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
+import { supabase } from '../lib/supabase';
 import { 
   BarChart3, 
   Package, 
@@ -9,10 +10,14 @@ import {
   Plus, 
   TrendingUp,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  X,
+  Loader2
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Input } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
 
 const mockChartData = [
   { name: 'Jan', views: 400, inquiries: 24 },
@@ -23,26 +28,26 @@ const mockChartData = [
   { name: 'Jun', views: 900, inquiries: 55 },
 ];
 
-export const DashboardLayout = ({ children, role }: { children: React.ReactNode, role: 'seller' | 'buyer' | 'admin' }) => {
+export const DashboardLayout = ({ children, role, links, title }: { children: React.ReactNode, role: 'seller' | 'buyer' | 'admin', links: {name: string, icon: React.ReactNode, active: boolean, onClick?: () => void}[], title: string }) => {
   const { profile } = useAuth();
-  const userName = profile?.first_name || 'User';
-
-  const sellerLinks = [
-    { name: 'Overview', icon: <BarChart3 size={20} />, active: true },
-    { name: 'Products', icon: <Package size={20} />, active: false },
-    { name: 'Inquiries', icon: <MessageSquare size={20} />, active: false },
-    { name: 'Company Profile', icon: <Store size={20} />, active: false },
-    { name: 'Settings', icon: <Settings size={20} />, active: false },
-  ];
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-earth-gray-light flex flex-col md:flex-row">
+      {/* Mobile Header for Sidebar Toggle */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-surface border-b border-earth-sand/30">
+        <p className="text-sm text-earth-gray-dark uppercase tracking-widest font-bold">{title}</p>
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-earth-brown rounded-md hover:bg-earth-beige">
+          {isMobileMenuOpen ? <X size={20} /> : <div className="space-y-1"><div className="w-5 h-0.5 bg-current"></div><div className="w-5 h-0.5 bg-current"></div><div className="w-5 h-0.5 bg-current"></div></div>}
+        </button>
+      </div>
+
       {/* Sidebar */}
-      <div className="w-full md:w-64 bg-surface border-r border-earth-sand/30 md:min-h-screen flex-shrink-0">
-        <div className="p-6">
-          <p className="text-[10px] text-earth-gray-dark uppercase tracking-widest mb-4 px-2 tracking-widest">Seller Portal</p>
+      <div className={`${isMobileMenuOpen ? 'block' : 'hidden'} md:block w-full md:w-64 bg-surface border-r border-earth-sand/30 md:min-h-screen flex-shrink-0 z-10`}>
+        <div className="p-4 md:p-6">
+          <p className="hidden md:block text-[10px] text-earth-gray-dark uppercase tracking-widest mb-4 px-2">{title}</p>
           <nav className="space-y-1">
-            {sellerLinks.map((link, idx) => (
+            {links.map((link, idx) => (
               <button
                 key={idx}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium text-sm text-left ${
@@ -50,6 +55,10 @@ export const DashboardLayout = ({ children, role }: { children: React.ReactNode,
                     ? 'bg-earth-beige text-earth-olive' 
                     : 'text-earth-gray-dark hover:bg-earth-beige/50'
                 }`}
+                onClick={() => {
+                  if (link.onClick) link.onClick();
+                  setIsMobileMenuOpen(false);
+                }}
               >
                 {link.icon}
                 {link.name}
@@ -60,7 +69,7 @@ export const DashboardLayout = ({ children, role }: { children: React.ReactNode,
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-4 md:p-8 overflow-auto">
+      <div className="flex-1 p-4 md:p-8 overflow-auto relative">
         <div className="max-w-6xl mx-auto">
           {children}
         </div>
@@ -70,14 +79,53 @@ export const DashboardLayout = ({ children, role }: { children: React.ReactNode,
 };
 
 export const SellerDashboardView = () => {
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const { user, profile } = useAuth();
+  const [productsCount, setProductsCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchProducts = async () => {
+      const { count } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_id', user.id);
+      
+      setProductsCount(count || 0);
+    };
+    fetchProducts();
+
+    const subscription = supabase
+      .channel('seller:products')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `company_id=eq.${user.id}` }, () => {
+        fetchProducts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [user]);
+
+  const sellerLinks = [
+    { name: 'Overview', icon: <BarChart3 size={20} />, active: true },
+    { name: 'Products', icon: <Package size={20} />, active: false },
+    { name: 'Inquiries', icon: <MessageSquare size={20} />, active: false },
+    { name: 'Company Profile', icon: <Store size={20} />, active: false },
+    { name: 'Settings', icon: <Settings size={20} />, active: false },
+  ];
+
   return (
-    <DashboardLayout role="seller">
+    <DashboardLayout role="seller" title="Seller Portal" links={sellerLinks}>
       <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-earth-brown">Welcome back, Supplier</h1>
+          <h1 className="text-2xl font-bold text-earth-brown">Welcome back, {profile?.company_name || profile?.first_name || 'Supplier'}</h1>
           <p className="text-earth-gray-dark">Here's what's happening with your products today.</p>
         </div>
-        <button className="bg-earth-olive hover:bg-earth-olive-dark text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-sm flex items-center gap-2 text-sm">
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="bg-earth-olive hover:bg-earth-olive-dark text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-sm flex items-center gap-2 text-sm"
+        >
           <Plus size={18} />
           Add Product
         </button>
@@ -85,9 +133,9 @@ export const SellerDashboardView = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <StatCard title="Active Listings" value="12" icon={<Package className="text-earth-olive" size={24} />} trend="+2 this month" />
-        <StatCard title="Total Views" value="3,500" icon={<TrendingUp className="text-earth-terracotta" size={24} />} trend="+15% vs last month" />
-        <StatCard title="New Inquiries" value="8" icon={<MessageSquare className="text-earth-sand" size={24} />} trend="3 need replies" highlight={true} />
+        <StatCard title="Active Listings" value={productsCount.toString()} icon={<Package className="text-earth-olive" size={24} />} trend="Updated via Realtime" />
+        <StatCard title="Total Views" value="0" icon={<TrendingUp className="text-earth-terracotta" size={24} />} trend="Feature coming soon" />
+        <StatCard title="New Inquiries" value="0" icon={<MessageSquare className="text-earth-sand" size={24} />} trend="No pending replies" highlight={true} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -127,24 +175,182 @@ export const SellerDashboardView = () => {
           </div>
           
           <div className="space-y-4 flex-grow">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex gap-4 p-4 rounded-2xl bg-earth-beige/50 border border-earth-sand/50">
-                <div className="w-10 h-10 rounded-full bg-earth-sand flex items-center justify-center text-earth-brown font-bold flex-shrink-0">
-                  {['J', 'S', 'M'][i-1]}
-                </div>
-                <div>
-                  <h4 className="font-semibold text-earth-brown text-sm">{['John Doe', 'Sarah Smith', 'Mike Johnson'][i-1]}</h4>
-                  <p className="text-xs text-earth-gray-dark mb-2">Interested in Industrial Grade Steel...</p>
-                  <div className="flex items-center gap-1 text-xs font-medium text-earth-terracotta">
-                    <Clock size={12} /> Pending Reply
-                  </div>
-                </div>
-              </div>
-            ))}
+            <p className="text-sm text-earth-gray-dark py-4 text-center">No recent messages.</p>
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <AddProductModal 
+            onClose={() => setIsAddModalOpen(false)} 
+            userId={user?.id}
+            companyName={profile?.company_name || `${profile?.first_name || 'My'} Company`}
+          />
+        )}
+      </AnimatePresence>
     </DashboardLayout>
+  );
+};
+
+const AddProductModal = ({ onClose, userId, companyName }: { onClose: () => void, userId?: string, companyName?: string }) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [formData, setFormData] = useState({
+    title: '',
+    category: 'Raw Materials',
+    price_range: '',
+    min_order: 100,
+    description: '',
+    image: 'https://images.unsplash.com/photo-1587884784915-d419dd1ac5ee?auto=format&fit=crop&q=80&w=800'
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) {
+      setError("You must be logged in to add a product.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error: insertError } = await supabase.from('products').insert([
+        {
+          title: formData.title,
+          category: formData.category,
+          price_range: formData.price_range,
+          min_order: Number(formData.min_order),
+          description: formData.description,
+          image: formData.image,
+          company_id: userId,
+          company_name: companyName,
+          is_featured: false
+        }
+      ]);
+
+      if (insertError) throw insertError;
+      
+      onClose();
+    } catch (err: any) {
+      console.error("Error adding product:", err);
+      setError(err.message || "Failed to add product");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-earth-brown/40 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-surface rounded-2xl shadow-xl border border-earth-sand shadow-black/10 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        <div className="flex justify-between items-center p-6 border-b border-earth-sand/50">
+          <h2 className="text-xl font-bold text-earth-brown">Add New Product</h2>
+          <button onClick={onClose} className="p-1 hover:bg-earth-beige rounded-full text-earth-gray-dark transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100">
+              {error}
+            </div>
+          )}
+          
+          <form id="add-product-form" onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-earth-gray-dark mb-1">Product Title</label>
+              <Input 
+                required 
+                value={formData.title}
+                onChange={e => setFormData({...formData, title: e.target.value})}
+                placeholder="e.g. Industrial Steel Sheets" 
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-earth-gray-dark mb-1">Category</label>
+                <select 
+                  className="w-full px-4 py-2 border border-earth-sand rounded-xl bg-surface focus:outline-none focus:ring-2 focus:ring-earth-olive/50 focus:border-earth-olive transition-colors text-earth-brown"
+                  value={formData.category}
+                  onChange={e => setFormData({...formData, category: e.target.value})}
+                >
+                  <option>Raw Materials</option>
+                  <option>Machinery & Equipment</option>
+                  <option>Packaging Solutions</option>
+                  <option>Electronics Components</option>
+                  <option>Textiles & Apparel</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-earth-gray-dark mb-1">Min. Order Qty</label>
+                <Input 
+                  type="number" 
+                  required 
+                  min="1"
+                  value={formData.min_order}
+                  onChange={e => setFormData({...formData, min_order: parseInt(e.target.value) || 1})}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-earth-gray-dark mb-1">Price Range</label>
+              <Input 
+                required 
+                placeholder="e.g. KES 300 - 500 / kg" 
+                value={formData.price_range}
+                onChange={e => setFormData({...formData, price_range: e.target.value})}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-earth-gray-dark mb-1">Description</label>
+              <textarea 
+                required
+                className="w-full px-4 py-2 border border-earth-sand rounded-xl bg-surface focus:outline-none focus:ring-2 focus:ring-earth-olive/50 focus:border-earth-olive transition-colors text-earth-brown min-h-[100px]"
+                placeholder="Describe your product..."
+                value={formData.description}
+                onChange={e => setFormData({...formData, description: e.target.value})}
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-earth-gray-dark mb-1">Image URL</label>
+              <Input 
+                required 
+                placeholder="https://..." 
+                value={formData.image}
+                onChange={e => setFormData({...formData, image: e.target.value})}
+              />
+            </div>
+          </form>
+        </div>
+
+        <div className="p-6 border-t border-earth-sand/50 bg-earth-beige/20 flex justify-end gap-3">
+          <Button variant="outline" type="button" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button 
+            form="add-product-form"
+            type="submit" 
+            disabled={loading}
+            className="bg-earth-olive hover:bg-earth-olive-dark text-white min-w-[120px]"
+          >
+            {loading ? <Loader2 size={18} className="animate-spin" /> : 'Add Product'}
+          </Button>
+        </div>
+      </motion.div>
+    </div>
   );
 };
 

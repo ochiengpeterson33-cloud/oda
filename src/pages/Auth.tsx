@@ -39,7 +39,7 @@ export const AuthUI = ({ isLogin = false }: { isLogin?: boolean }) => {
     setError(null);
 
     if (!isSupabaseConfigured()) {
-      setError("Please configure Supabase to continue.");
+      setError("System setup incomplete: Missing Supabase configuration. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your Vercel project settings.");
       setLoading(false);
       return;
     }
@@ -81,7 +81,7 @@ export const AuthUI = ({ isLogin = false }: { isLogin?: boolean }) => {
 
   const handleGoogleLogin = async () => {
     if (!isSupabaseConfigured()) {
-       setError("Supabase is not configured.");
+       setError("System setup incomplete: Missing Supabase configuration. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your Vercel project settings.");
        return;
     }
     await supabase.auth.signInWithOAuth({ provider: 'google' });

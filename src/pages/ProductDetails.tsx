@@ -1,18 +1,56 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { MOCK_PRODUCTS } from '../lib/mockData';
-import { Building2, MapPin, ShieldCheck, Star, Truck, ChevronLeft, Heart, MessageSquare } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { Building2, MapPin, ShieldCheck, Star, Truck, ChevronLeft, Heart, MessageSquare, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 
 export const ProductDetails = () => {
   const { id } = useParams();
-  const product = MOCK_PRODUCTS.find(p => p.id === id);
+  const [product, setProduct] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!product) {
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (error) throw error;
+        setProduct(data);
+      } catch (err: any) {
+        console.error("Error fetching product:", err);
+        setError(err.message || 'Product not found');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchProduct();
+    } else {
+      setLoading(false);
+      setError('No product ID provided');
+    }
+  }, [id]);
+
+  if (loading) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8">
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-earth-olive" />
+      </div>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 bg-earth-beige/20">
         <h2 className="text-2xl font-bold text-earth-brown mb-4">Product not found</h2>
-        <Link to="/marketplace" className="text-earth-olive hover:underline">Return to Marketplace</Link>
+        <p className="text-earth-gray-dark mb-6">The product you're looking for doesn't exist or has been removed.</p>
+        <Link to="/marketplace" className="text-earth-olive hover:underline font-medium">Return to Marketplace</Link>
       </div>
     );
   }
@@ -60,15 +98,14 @@ export const ProductDetails = () => {
 
                 <div className="mb-8">
                   <p className="text-earth-gray-dark text-sm mb-1">Wholesale Price</p>
-                  <p className="text-4xl font-bold text-earth-brown mb-2">{product.price_range}</p>
+                  <p className="text-4xl font-bold text-earth-brown mb-2">{product.price_range || 'Contact for price'}</p>
                   <p className="text-sm text-earth-gray-dark">Minimum Order: <span className="font-semibold text-earth-brown">{product.min_order} units</span></p>
                 </div>
 
                 <div className="prose prose-sm text-earth-gray-dark mb-8">
                   <p>{product.description}</p>
-                  <ul>
+                  <ul className="mt-4 list-disc pl-5">
                     <li>Industry standard compliance</li>
-                    <li>Sourced sustainably</li>
                     <li>Global shipping available</li>
                   </ul>
                 </div>
@@ -89,17 +126,17 @@ export const ProductDetails = () => {
         {/* Supplier Profile Row */}
         <div className="bg-surface rounded-2xl p-8 border border-earth-sand/30 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 bg-earth-olive/10 text-earth-olive rounded-2xl flex items-center justify-center">
+            <div className="w-16 h-16 bg-earth-olive/10 text-earth-olive rounded-2xl flex items-center justify-center flex-shrink-0">
               <Building2 size={32} />
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-xl font-bold text-earth-brown">{product.company_name}</h3>
+                <h3 className="text-xl font-bold text-earth-brown">{product.company_name || 'Verified Supplier'}</h3>
                 <ShieldCheck size={18} className="text-earth-olive" />
               </div>
               <div className="flex items-center gap-4 text-sm text-earth-gray-dark">
-                <span className="flex items-center gap-1"><MapPin size={14} /> Global</span>
-                <span className="flex items-center gap-1"><Truck size={14} /> Ships in 7 Days</span>
+                <span className="flex items-center gap-1"><MapPin size={14} /> Global Delivery</span>
+                <span className="flex items-center gap-1"><Truck size={14} /> Quick Dispatch</span>
               </div>
             </div>
           </div>
